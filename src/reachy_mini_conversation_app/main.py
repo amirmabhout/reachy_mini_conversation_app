@@ -11,6 +11,7 @@ from fastrtc import Stream
 from reachy_mini import ReachyMini
 from reachy_mini_conversation_app.moves import MovementManager
 from reachy_mini_conversation_app.tools import ToolDependencies
+from reachy_mini_conversation_app.config import config
 from reachy_mini_conversation_app.utils import (
     parse_args,
     setup_logger,
@@ -18,6 +19,7 @@ from reachy_mini_conversation_app.utils import (
 )
 from reachy_mini_conversation_app.console import LocalStream
 from reachy_mini_conversation_app.openai_realtime import OpenaiRealtimeHandler
+from reachy_mini_conversation_app.gemini_realtime import GeminiRealtimeHandler
 from reachy_mini_conversation_app.audio.head_wobbler import HeadWobbler
 
 
@@ -75,7 +77,16 @@ def main() -> None:
     )
     logger.debug(f"Chatbot avatar images: {chatbot.avatar_images}")
 
-    handler = OpenaiRealtimeHandler(deps)
+    # Select handler based on configured provider
+    provider = config.get_provider()
+    if provider == "gemini":
+        logger.info("Using Gemini handler")
+        handler = GeminiRealtimeHandler(deps)
+    elif provider == "openai":
+        logger.info("Using OpenAI handler")
+        handler = OpenaiRealtimeHandler(deps)
+    else:
+        raise RuntimeError(f"Unknown provider: {provider}")
 
     stream_manager: gr.Blocks | LocalStream | None = None
 
