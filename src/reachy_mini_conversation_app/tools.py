@@ -165,23 +165,23 @@ class MoveHead(Tool):
 
 
 class Camera(Tool):
-    """Take a picture with the camera and ask a question about it."""
+    """Check if a person is in front of the camera using face detection."""
 
     name = "camera"
-    description = "Take a picture with the camera and ask a question about it."
+    description = "Check if a person is detected in front of the camera. Returns whether a person is present or not."
     parameters_schema = {
         "type": "object",
         "properties": {
             "question": {
                 "type": "string",
-                "description": "The question to ask about the picture",
+                "description": "Question about person detection (e.g., 'Is someone there?', 'Can you see anyone?')",
             },
         },
         "required": ["question"],
     }
 
     async def __call__(self, deps: ToolDependencies, **kwargs: Any) -> Dict[str, Any]:
-        """Take a picture with the camera and ask a question about it."""
+        """Take a picture with the camera and detect if a person is present."""
         image_query = (kwargs.get("question") or "").strip()
         if not image_query:
             logger.warning("camera: empty question")
@@ -189,7 +189,7 @@ class Camera(Tool):
 
         logger.info("Tool call: camera question=%s", image_query[:120])
 
-        # Get frame from camera worker buffer (like main_works.py)
+        # Get frame from camera worker buffer
         if deps.camera_worker is not None:
             frame = deps.camera_worker.get_latest_frame()
             if frame is None:
@@ -199,7 +199,26 @@ class Camera(Tool):
             logger.error("Camera worker not available")
             return {"error": "Camera worker not available"}
 
-        # Use vision manager for processing if available
+        # Use head tracker for simple person detection (primary method)
+        if deps.camera_worker.head_tracker is not None:
+            try:
+                eye_center, _ = deps.camera_worker.head_tracker.get_head_position(frame)
+
+                if eye_center is not None:
+                    return {
+                        "person_detected": True,
+                        "status": "A person is detected in front of the camera"
+                    }
+                else:
+                    return {
+                        "person_detected": False,
+                        "status": "No person detected in front of the camera"
+                    }
+            except Exception as e:
+                logger.error(f"Head tracker error: {e}")
+                return {"error": f"Person detection failed: {e}"}
+
+        # Fallback: Use vision manager if available (for local processing)
         if deps.vision_manager is not None:
             vision_result = await asyncio.to_thread(
                 deps.vision_manager.processor.process_image, frame, image_query,
@@ -211,16 +230,9 @@ class Camera(Tool):
                 if isinstance(vision_result, str)
                 else {"error": "vision returned non-string"}
             )
-        # Return base64 encoded image like main_works.py camera tool
-        import base64
 
-        import cv2
-
-        temp_path = "/tmp/camera_frame.jpg"
-        cv2.imwrite(temp_path, frame)
-        with open(temp_path, "rb") as f:
-            b64_encoded = base64.b64encode(f.read()).decode("utf-8")
-        return {"b64_im": b64_encoded}
+        # No detection method available
+        return {"error": "No person detection method available (head tracker or vision manager required)"}
 
 
 class HeadTracking(Tool):
@@ -246,99 +258,6 @@ class HeadTracking(Tool):
         logger.info("Tool call: head_tracking %s", status)
         return {"status": f"head tracking {status}"}
 
-
-
-class Dance(Tool):
-    """Play a named or random dance move once (or repeat). Non-blocking."""
-
-    name = "dance"
-    description = "Play a named or random dance move once (or repeat). Non-blocking."
-    parameters_schema = {
-        "type": "object",
-        "properties": {
-            "move": {
-                "type": "string",
-                "description": """Name of the move; use 'random' or omit for random.
-                                    Here is a list of the available moves:
-                                        simple_nod: A simple, continuous up-and-down nodding motion.
-                                        head_tilt_roll: A continuous side-to-side head roll (ear to shoulder).
-                                        side_to_side_sway: A smooth, side-to-side sway of the entire head.
-                                        dizzy_spin: A circular 'dizzy' head motion combining roll and pitch.
-                                        stumble_and_recover: A simulated stumble and recovery with multiple axis movements. Good vibes
-                                        headbanger_combo: A strong head nod combined with a vertical bounce.
-                                        interwoven_spirals: A complex spiral motion using three axes at different frequencies.
-                                        sharp_side_tilt: A sharp, quick side-to-side tilt using a triangle waveform.
-                                        side_peekaboo: A multi-stage peekaboo performance, hiding and peeking to each side.
-                                        yeah_nod: An emphatic two-part yeah nod using transient motions.
-                                        uh_huh_tilt: A combined roll-and-pitch uh-huh gesture of agreement.
-                                        neck_recoil: A quick, transient backward recoil of the neck.
-                                        chin_lead: A forward motion led by the chin, combining translation and pitch.
-                                        groovy_sway_and_roll: A side-to-side sway combined with a corresponding roll for a groovy effect.
-                                        chicken_peck: A sharp, forward, chicken-like pecking motion.
-                                        side_glance_flick: A quick glance to the side that holds, then returns.
-                                        polyrhythm_combo: A 3-beat sway and a 2-beat nod create a polyrhythmic feel.
-                                        grid_snap: A robotic, grid-snapping motion using square waveforms.
-                                        pendulum_swing: A simple, smooth pendulum-like swing using a roll motion.
-                                        jackson_square: Traces a rectangle via a 5-point path, with sharp twitches on arrival at each checkpoint.
-                """,
-            },
-            "repeat": {
-                "type": "integer",
-                "description": "How many times to repeat the move (default 1).",
-            },
-        },
-        "required": [],
-    }
-
-    async def __call__(self, deps: ToolDependencies, **kwargs: Any) -> Dict[str, Any]:
-        """Play a named or random dance move once (or repeat). Non-blocking."""
-        if not DANCE_AVAILABLE:
-            return {"error": "Dance system not available"}
-
-        move_name = kwargs.get("move")
-        repeat = int(kwargs.get("repeat", 1))
-
-        logger.info("Tool call: dance move=%s repeat=%d", move_name, repeat)
-
-        if not move_name or move_name == "random":
-            import random
-
-            move_name = random.choice(list(AVAILABLE_MOVES.keys()))
-
-        if move_name not in AVAILABLE_MOVES:
-            return {"error": f"Unknown dance move '{move_name}'. Available: {list(AVAILABLE_MOVES.keys())}"}
-
-        # Add dance moves to queue
-        movement_manager = deps.movement_manager
-        for _ in range(repeat):
-            dance_move = DanceQueueMove(move_name)
-            movement_manager.queue_move(dance_move)
-
-        return {"status": "queued", "move": move_name, "repeat": repeat}
-
-
-class StopDance(Tool):
-    """Stop the current dance move."""
-
-    name = "stop_dance"
-    description = "Stop the current dance move"
-    parameters_schema = {
-        "type": "object",
-        "properties": {
-            "dummy": {
-                "type": "boolean",
-                "description": "dummy boolean, set it to true",
-            },
-        },
-        "required": ["dummy"],
-    }
-
-    async def __call__(self, deps: ToolDependencies, **kwargs: Any) -> Dict[str, Any]:
-        """Stop the current dance move."""
-        logger.info("Tool call: stop_dance")
-        movement_manager = deps.movement_manager
-        movement_manager.clear_move_queue()
-        return {"status": "stopped dance and cleared queue"}
 
 
 def get_available_emotions_and_descriptions() -> str:
@@ -426,6 +345,107 @@ class StopEmotion(Tool):
         movement_manager = deps.movement_manager
         movement_manager.clear_move_queue()
         return {"status": "stopped emotion and cleared queue"}
+
+
+class LogPersonData(Tool):
+    """Log information about a person you've met for future connection matching."""
+
+    name = "log_person_data"
+    description = """Log information about a person you've met, including their name, background,
+    hobbies, interests, email, and visual description. Use this at the END of a successful conversation
+    to save the person's data for future matching."""
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "The person's name",
+            },
+            "background": {
+                "type": "string",
+                "description": "What they do - work, study, projects, etc.",
+            },
+            "hobbies": {
+                "type": "string",
+                "description": "Their hobbies and interests",
+            },
+            "interests": {
+                "type": "string",
+                "description": "What they're passionate about or want to explore",
+            },
+            "email": {
+                "type": "string",
+                "description": "Their email address for sending introductions",
+            },
+            "visual_description": {
+                "type": "string",
+                "description": "Visual details about what they were wearing (from camera)",
+            },
+            "notes": {
+                "type": "string",
+                "description": "Any additional notes or memorable details from the conversation",
+            },
+        },
+        "required": ["name", "background", "hobbies", "email"],
+    }
+
+    async def __call__(self, deps: ToolDependencies, **kwargs: Any) -> Dict[str, Any]:
+        """Log person data to file and structured logs."""
+        import datetime
+        import os
+
+        # Extract parameters
+        name = kwargs.get("name", "Unknown")
+        background = kwargs.get("background", "")
+        hobbies = kwargs.get("hobbies", "")
+        interests = kwargs.get("interests", "")
+        email = kwargs.get("email", "")
+        visual_description = kwargs.get("visual_description", "")
+        notes = kwargs.get("notes", "")
+
+        # Create timestamp
+        timestamp = datetime.datetime.now().isoformat()
+
+        # Create data structure
+        person_data = {
+            "timestamp": timestamp,
+            "name": name,
+            "background": background,
+            "hobbies": hobbies,
+            "interests": interests,
+            "email": email,
+            "visual_description": visual_description,
+            "notes": notes,
+        }
+
+        # Log to structured logger
+        logger.info(
+            "Person data logged: name=%s email=%s background=%s hobbies=%s",
+            name,
+            email,
+            background[:50],
+            hobbies[:50],
+        )
+
+        # Append to JSON lines file for persistence
+        log_file_path = os.path.expanduser("~/reachy_people_connector_data.jsonl")
+        try:
+            with open(log_file_path, "a") as f:
+                json.dump(person_data, f)
+                f.write("\n")
+            logger.info("Person data written to %s", log_file_path)
+        except Exception as e:
+            logger.error("Failed to write to log file: %s", e)
+            return {
+                "status": "error",
+                "error": f"Failed to save data: {e}",
+            }
+
+        return {
+            "status": "success",
+            "message": f"Successfully logged data for {name}. Total entries in database.",
+            "saved_to": log_file_path,
+        }
 
 
 class DoNothing(Tool):

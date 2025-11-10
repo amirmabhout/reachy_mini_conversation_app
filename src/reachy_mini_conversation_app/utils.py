@@ -13,8 +13,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--head-tracker",
         choices=["yolo", "mediapipe", None],
-        default=None,
-        help="Choose head tracker (default: None)",
+        default="mediapipe",
+        help="Choose head tracker (default: mediapipe)",
     )
     parser.add_argument("--no-camera", default=False, action="store_true", help="Disable camera usage")
     parser.add_argument(
