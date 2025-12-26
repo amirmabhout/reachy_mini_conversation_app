@@ -166,7 +166,7 @@ class GeminiRealtimeHandler(AsyncStreamHandler):
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
                         prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name="sadachbia"  # Using Sadachbia as a neutral voice
+                            voice_name="enceladus"  # Using Enceladus voice
                         )
                     )
                 ),

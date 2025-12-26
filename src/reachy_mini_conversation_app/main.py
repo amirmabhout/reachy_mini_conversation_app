@@ -18,8 +18,6 @@ from reachy_mini_conversation_app.utils import (
     handle_vision_stuff,
 )
 from reachy_mini_conversation_app.console import LocalStream
-from reachy_mini_conversation_app.openai_realtime import OpenaiRealtimeHandler
-from reachy_mini_conversation_app.gemini_realtime import GeminiRealtimeHandler
 from reachy_mini_conversation_app.audio.head_wobbler import HeadWobbler
 
 
@@ -76,6 +74,36 @@ def main() -> None:
         ),
     )
     logger.debug(f"Chatbot avatar images: {chatbot.avatar_images}")
+
+    # Configure conversation mode by modifying modules before importing handlers
+    logger.info(f"Using conversation mode: {args.mode}")
+
+    # Dynamically modify SESSION_INSTRUCTIONS based on mode
+    from reachy_mini_conversation_app import prompts
+    from reachy_mini_conversation_app.prompts import CONVERSATION_MODES
+
+    selected_instructions = CONVERSATION_MODES.get(args.mode)
+    if selected_instructions is None:
+        raise RuntimeError(f"Unknown conversation mode: {args.mode}")
+
+    # Update the SESSION_INSTRUCTIONS in the prompts module
+    prompts.SESSION_INSTRUCTIONS = selected_instructions
+    logger.info(f"Updated prompts.SESSION_INSTRUCTIONS for {args.mode} mode")
+
+    # Dynamically filter tools based on mode
+    from reachy_mini_conversation_app import tools
+    from reachy_mini_conversation_app.tools import filter_tools_by_mode
+
+    filtered_tools, filtered_tool_specs = filter_tools_by_mode(args.mode)
+
+    # Update the tools module
+    tools.ALL_TOOLS = filtered_tools
+    tools.ALL_TOOL_SPECS = filtered_tool_specs
+    logger.info(f"Updated tools registry: {len(filtered_tools)} tools for {args.mode} mode")
+
+    # NOW import handlers (they will use the updated values)
+    from reachy_mini_conversation_app.openai_realtime import OpenaiRealtimeHandler
+    from reachy_mini_conversation_app.gemini_realtime import GeminiRealtimeHandler
 
     # Select handler based on configured provider
     provider = config.get_provider()

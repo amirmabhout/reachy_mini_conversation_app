@@ -478,6 +478,36 @@ ALL_TOOLS: Dict[str, Tool] = {cls.name: cls() for cls in get_concrete_subclasses
 ALL_TOOL_SPECS = [tool.spec() for tool in ALL_TOOLS.values()]
 
 
+def filter_tools_by_mode(mode: str) -> Tuple[Dict[str, Tool], List[Dict[str, Any]]]:
+    """Filter tools based on conversation mode.
+
+    Args:
+        mode: Conversation mode ("people_connector" or "brainstorming")
+
+    Returns:
+        Tuple of (filtered_tools_dict, filtered_tool_specs_list)
+    """
+    # Tools to exclude per mode
+    EXCLUDED_TOOLS = {
+        "brainstorming": {"log_person_data"},  # Don't log people data in brainstorming mode
+        "people_connector": set(),  # All tools available in people connector mode
+    }
+
+    excluded = EXCLUDED_TOOLS.get(mode, set())
+
+    # Filter tools
+    filtered_tools = {
+        name: tool
+        for name, tool in ALL_TOOLS.items()
+        if name not in excluded
+    }
+
+    # Generate filtered specs
+    filtered_specs = [tool.spec() for tool in filtered_tools.values()]
+
+    return filtered_tools, filtered_specs
+
+
 # Dispatcher
 def _safe_load_obj(args_json: str) -> Dict[str, Any]:
     try:
