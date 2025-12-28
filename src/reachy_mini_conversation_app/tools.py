@@ -491,6 +491,7 @@ def filter_tools_by_mode(mode: str) -> Tuple[Dict[str, Tool], List[Dict[str, Any
     EXCLUDED_TOOLS = {
         "brainstorming": {"log_person_data"},  # Don't log people data in brainstorming mode
         "people_connector": set(),  # All tools available in people connector mode
+        "kids": {"log_person_data", "camera", "head_tracking"},  # Audio-only mode for kids
     }
 
     excluded = EXCLUDED_TOOLS.get(mode, set())

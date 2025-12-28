@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gradio", default=False, action="store_true", help="Open gradio interface")
     parser.add_argument(
         "--mode",
-        choices=["people_connector", "brainstorming"],
+        choices=["people_connector", "brainstorming", "kids"],
         default="people_connector",
         help="Conversation mode (default: people_connector)",
     )
