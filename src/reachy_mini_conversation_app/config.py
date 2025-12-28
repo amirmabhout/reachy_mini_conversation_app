@@ -1,45 +1,28 @@
 import os
 import logging
-from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 
 logger = logging.getLogger(__name__)
 
-# Check if .env file exists
-env_file = Path(".env")
-if not env_file.exists():
-    raise RuntimeError(
-        ".env file not found. Please create one based on .env.example:\n"
-        "  cp .env.example .env\n"
-        "Then add your OPENAI_API_KEY or GEMINI_API_KEY to the .env file.",
-    )
+# Locate .env file (search upward from current working directory)
+dotenv_path = find_dotenv(usecwd=True)
 
-# Load .env and verify it was loaded successfully
-if not load_dotenv():
-    raise RuntimeError(
-        "Failed to load .env file. Please ensure the file is readable and properly formatted.",
-    )
-
-logger.info("Configuration loaded from .env file")
+if dotenv_path:
+    # Load .env and override environment variables
+    load_dotenv(dotenv_path=dotenv_path, override=True)
+    logger.info(f"Configuration loaded from {dotenv_path}")
+else:
+    logger.warning("No .env file found, using environment variables")
 
 
 class Config:
     """Configuration class for the conversation app."""
 
     # API Keys (at least one required)
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # The key is downloaded in console.py if needed
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-    # Validate at least one API key is present
-    if not OPENAI_API_KEY and not GEMINI_API_KEY:
-        raise RuntimeError(
-            "No AI provider API key found in .env file. Please add one:\n"
-            "  OPENAI_API_KEY=your_openai_key_here\n"
-            "  OR\n"
-            "  GEMINI_API_KEY=your_gemini_key_here",
-        )
 
     # Validate non-empty keys
     if OPENAI_API_KEY is not None and not OPENAI_API_KEY.strip():
@@ -78,5 +61,30 @@ class Config:
 
     logger.debug(f"Model: {MODEL_NAME}, Gemini Model: {GEMINI_MODEL_NAME}, HF_HOME: {HF_HOME}, Vision Model: {LOCAL_VISION_MODEL}")
 
+    REACHY_MINI_CUSTOM_PROFILE = os.getenv("REACHY_MINI_CUSTOM_PROFILE")
+    logger.debug(f"Custom Profile: {REACHY_MINI_CUSTOM_PROFILE}")
+
 
 config = Config()
+
+
+def set_custom_profile(profile: str | None) -> None:
+    """Update the selected custom profile at runtime and expose it via env.
+
+    This ensures modules that read `config` and code that inspects the
+    environment see a consistent value.
+    """
+    try:
+        config.REACHY_MINI_CUSTOM_PROFILE = profile
+    except Exception:
+        pass
+    try:
+        import os as _os
+
+        if profile:
+            _os.environ["REACHY_MINI_CUSTOM_PROFILE"] = profile
+        else:
+            # Remove to reflect default
+            _os.environ.pop("REACHY_MINI_CUSTOM_PROFILE", None)
+    except Exception:
+        pass

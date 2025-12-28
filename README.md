@@ -1,3 +1,16 @@
+---
+title: Reachy Mini Conversation App
+emoji: 🎤
+colorFrom: red
+colorTo: blue
+sdk: static
+pinned: false
+short_description: Talk with Reachy Mini !
+tags:
+ - reachy_mini
+ - reachy_mini_python_app
+---
+
 # Reachy Mini conversation app
 
 Conversational app for the Reachy Mini robot combining OpenAI's realtime APIs, vision pipelines, and choreographed motion libraries.
@@ -21,6 +34,7 @@ The app follows a layered architecture connecting the user, AI services, and rob
 ## Installation
 
 > [!IMPORTANT]
+> Before using this app, you need to install [Reachy Mini's SDK](https://github.com/pollen-robotics/reachy_mini/).<br>
 > Windows support is currently experimental and has not been extensively tested. Use with caution.
 
 ### Using uv
@@ -32,12 +46,16 @@ source .venv/bin/activate
 uv sync
 ```
 
-To include optional vision dependencies:
+> [!NOTE]
+> To reproduce the exact dependency set from this repo's `uv.lock`, run `uv sync` with `--locked` (or `--frozen`). This ensures `uv` installs directly from the lockfile without re-resolving or updating any versions.
+
+To include optional dependencies:
 ```
-uv sync --extra local_vision        # For local PyTorch/Transformers vision
-uv sync --extra yolo_vision         # For YOLO-based vision
-uv sync --extra mediapipe_vision    # For MediaPipe-based vision
-uv sync --extra all_vision          # For all vision features
+uv sync --extra reachy_mini_wireless # For wireless Reachy Mini with GStreamer support
+uv sync --extra local_vision         # For local PyTorch/Transformers vision
+uv sync --extra yolo_vision          # For YOLO-based vision
+uv sync --extra mediapipe_vision     # For MediaPipe-based vision
+uv sync --extra all_vision           # For all vision features
 ```
 
 You can combine extras or include dev dependencies:
@@ -56,6 +74,9 @@ pip install -e .
 Install optional extras depending on the feature set you need:
 
 ```bash
+# Wireless Reachy Mini support
+pip install -e .[reachy_mini_wireless]
+
 # Vision stacks (choose at least one if you plan to run face tracking)
 pip install -e .[local_vision]
 pip install -e .[yolo_vision]
@@ -72,6 +93,7 @@ Some wheels (e.g. PyTorch) are large and require compatible CUDA or CPU builds�
 
 | Extra | Purpose | Notes |
 |-------|---------|-------|
+| `reachy_mini_wireless` | Wireless Reachy Mini with GStreamer support. | Required for wireless versions of Reachy Mini, includes GStreamer dependencies.
 | `local_vision` | Run the local VLM (SmolVLM2) through PyTorch/Transformers. | GPU recommended; ensure compatible PyTorch builds for your platform.
 | `yolo_vision` | YOLOv8 tracking via `ultralytics` and `supervision`. | CPU friendly; supports the `--head-tracker yolo` option.
 | `mediapipe_vision` | Lightweight landmark tracking with MediaPipe. | Works on CPU; enables `--head-tracker mediapipe`.
@@ -110,6 +132,7 @@ By default, the app runs in console mode for direct audio interaction. Use the `
 | `--local-vision` | `False` | Use local vision model (SmolVLM2) for periodic image processing instead of gpt-realtime vision. Requires `local_vision` extra to be installed. |
 | `--gradio` | `False` | Launch the Gradio web UI. Without this flag, runs in console mode. Required when running in simulation mode. |
 | `--debug` | `False` | Enable verbose logging for troubleshooting. |
+| `--wireless-version` | `False` | Use GStreamer backend for wireless version of the robot. Requires `reachy_mini_wireless` extra to be installed.
 
 
 ### Examples
@@ -125,11 +148,26 @@ By default, the app runs in console mode for direct audio interaction. Use the `
   reachy-mini-conversation-app --local-vision
   ```
 
+- Run with wireless support (requires `reachy_mini_wireless` extra and daemon started with `--wireless-version`):
+
+  ```bash
+  reachy-mini-conversation-app --wireless-version
+  ```
+
 - Disable the camera pipeline (audio-only conversation):
 
   ```bash
   reachy-mini-conversation-app --no-camera
   ```
+
+### Troubleshooting
+
+- Timeout error:
+If you get an error like this:
+  ```bash
+  TimeoutError: Timeout while waiting for connection with the server.
+  ```
+It probably means that the Reachy Mini's daemon isn't running. Install [Reachy Mini's SDK](https://github.com/pollen-robotics/reachy_mini/) and start the daemon.
 
 ## LLM tools exposed to the assistant
 
@@ -143,6 +181,48 @@ By default, the app runs in console mode for direct audio interaction. Use the `
 | `play_emotion` | Play a recorded emotion clip via Hugging Face assets. | Needs `HF_TOKEN` for the recorded emotions dataset. |
 | `stop_emotion` | Clear queued emotions. | Core install only. |
 | `do_nothing` | Explicitly remain idle. | Core install only. |
+
+## Using custom profiles
+Create custom profiles with dedicated instructions and enabled tools! 
+
+Set `REACHY_MINI_CUSTOM_PROFILE=<name>` to load `src/reachy_mini_conversation_app/profiles/<name>/` (see `.env.example`). If unset, the `default` profile is used.
+
+Each profile requires two files: `instructions.txt` (prompt text) and `tools.txt` (list of allowed tools), and optionally contains custom tools implementations.
+
+### Custom instructions
+Write plain-text prompts in `instructions.txt`. To reuse shared prompt pieces, add lines like:
+```
+[passion_for_lobster_jokes]
+[identities/witty_identity]
+```
+Each placeholder pulls the matching file under `src/reachy_mini_conversation_app/prompts/` (nested paths allowed). See `src/reachy_mini_conversation_app/profiles/example/` for a reference layout.
+
+### Enabling tools
+List enabled tools in `tools.txt`, one per line; prefix with `#` to comment out. For example:
+
+```
+play_emotion
+# move_head
+
+# My custom tool defined locally
+sweep_look
+```
+Tools are resolved first from Python files in the profile folder (custom tools), then from the shared library `src/reachy_mini_conversation_app/tools/` (e.g., `dance`, `head_tracking`). 
+
+### Custom tools
+On top of built-in tools found in the shared library, you can implement custom tools specific to your profile by adding Python files in the profile folder. 
+Custom tools must subclass `reachy_mini_conversation_app.tools.core_tools.Tool` (see `profiles/example/sweep_look.py`).
+
+### Edit personalities from the UI
+When running with `--gradio`, open the “Personality” accordion:
+- Select among available profiles (folders under `src/reachy_mini_conversation_app/profiles/`) or the built‑in default.
+- Click “Apply” to update the current session instructions live.
+- Create a new personality by entering a name and instructions text; it stores files under `profiles/<name>/` and copies `tools.txt` from the `default` profile.
+
+Note: The “Personality” panel updates the conversation instructions. Tool sets are loaded at startup from `tools.txt` and are not hot‑reloaded.
+
+
+
 
 ## Development workflow
 - Install the dev group extras: `uv sync --group dev` or `pip install -e .[dev]`.
